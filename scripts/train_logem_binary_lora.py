@@ -1,5 +1,6 @@
 import argparse
 import csv
+import inspect
 import random
 from collections import Counter
 from dataclasses import dataclass
@@ -129,6 +130,44 @@ def print_distribution(name: str, rows: List[Dict[str, str]]) -> None:
     print(f"{name} label distribution: {dict(counts)}")
 
 
+def build_training_args(args: argparse.Namespace) -> TrainingArguments:
+    kwargs = {
+        "output_dir": args.output_dir,
+        "learning_rate": args.learning_rate,
+        "num_train_epochs": args.num_train_epochs,
+        "per_device_train_batch_size": args.batch_size,
+        "per_device_eval_batch_size": args.batch_size,
+        "gradient_accumulation_steps": args.gradient_accumulation_steps,
+        "logging_steps": 20,
+        "eval_steps": args.eval_steps,
+        "save_steps": args.save_steps,
+        "save_strategy": "steps",
+        "report_to": "none",
+        "fp16": torch.cuda.is_available(),
+        "bf16": False,
+        "dataloader_num_workers": 0,
+        "load_best_model_at_end": False,
+        "seed": args.seed,
+    }
+    sig = inspect.signature(TrainingArguments.__init__)
+    if "eval_strategy" in sig.parameters:
+        kwargs["eval_strategy"] = "steps"
+    else:
+        kwargs["evaluation_strategy"] = "steps"
+    return TrainingArguments(**kwargs)
+
+
+def print_trainable_stats(model) -> None:
+    trainable = 0
+    total = 0
+    for p in model.parameters():
+        total += p.numel()
+        if p.requires_grad:
+            trainable += p.numel()
+    pct = 100 * trainable / total if total else 0.0
+    print(f"trainable params: {trainable:,} || all params: {total:,} || trainable%: {pct:.4f}")
+
+
 def main() -> int:
     args = parse_args()
 
@@ -178,7 +217,7 @@ def main() -> int:
         model_kwargs["quantization_config"] = quant_config
         model_kwargs["device_map"] = "auto"
     else:
-        model_kwargs["torch_dtype"] = torch.float16 if torch.cuda.is_available() else torch.float32
+        model_kwargs["dtype"] = torch.float16 if torch.cuda.is_available() else torch.float32
 
     try:
         model = AutoModelForCausalLM.from_pretrained(args.model_name, **model_kwargs)
@@ -194,16 +233,30 @@ def main() -> int:
     if quant_config is not None:
         model = prepare_model_for_kbit_training(model)
 
-    lora_config = LoraConfig(
-        r=16,
-        lora_alpha=32,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj"],
-        lora_dropout=0.05,
-        bias="none",
-        task_type="CAUSAL_LM",
-    )
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
+    has_existing_peft = hasattr(model, "peft_config") and bool(getattr(model, "peft_config", {}))
+    if has_existing_peft:
+        # This checkpoint already ships with LoRA weights. Continue training the existing adapter.
+        for name, param in model.named_parameters():
+            param.requires_grad = "lora_" in name
+        print("Detected existing PEFT adapter in checkpoint. Reusing it for training.")
+        if hasattr(model, "print_trainable_parameters"):
+            model.print_trainable_parameters()
+        else:
+            print_trainable_stats(model)
+    else:
+        lora_config = LoraConfig(
+            r=16,
+            lora_alpha=32,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "up_proj", "down_proj", "gate_proj"],
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        model = get_peft_model(model, lora_config)
+        if hasattr(model, "print_trainable_parameters"):
+            model.print_trainable_parameters()
+        else:
+            print_trainable_stats(model)
 
     token_cfg = TokenizeConfig(tokenizer=tokenizer, max_length=args.max_length)
     train_raw = Dataset.from_list(train_rows)
@@ -211,25 +264,7 @@ def main() -> int:
     train_ds = train_raw.map(lambda r: tokenize_row(r, token_cfg), remove_columns=train_raw.column_names)
     val_ds = val_raw.map(lambda r: tokenize_row(r, token_cfg), remove_columns=val_raw.column_names)
 
-    training_args = TrainingArguments(
-        output_dir=args.output_dir,
-        learning_rate=args.learning_rate,
-        num_train_epochs=args.num_train_epochs,
-        per_device_train_batch_size=args.batch_size,
-        per_device_eval_batch_size=args.batch_size,
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        logging_steps=20,
-        eval_steps=args.eval_steps,
-        save_steps=args.save_steps,
-        evaluation_strategy="steps",
-        save_strategy="steps",
-        report_to="none",
-        fp16=torch.cuda.is_available(),
-        bf16=False,
-        dataloader_num_workers=0,
-        load_best_model_at_end=False,
-        seed=args.seed,
-    )
+    training_args = build_training_args(args)
 
     data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model, padding=True)
 
