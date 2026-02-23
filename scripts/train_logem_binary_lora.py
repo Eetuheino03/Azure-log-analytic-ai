@@ -17,7 +17,8 @@ from typing import Dict, List, Optional
 
 import torch
 from datasets import Dataset, load_from_disk
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
+from huggingface_hub import hf_hub_download
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, DataCollatorForSeq2Seq, Trainer, TrainingArguments
 from transformers.models.auto.configuration_auto import CONFIG_MAPPING
 
@@ -440,8 +441,26 @@ def can_fallback_to_cpu(exc: Exception) -> bool:
             return True
     return False
 
+
+def get_adapter_base_model(repo_id: str) -> Optional[str]:
+    # If repo contains a PEFT adapter, load base model explicitly and attach adapter manually.
+    try:
+        path = hf_hub_download(repo_id=repo_id, filename="adapter_config.json")
+    except Exception:
+        return None
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    base = data.get("base_model_name_or_path")
+    if isinstance(base, str) and base.strip():
+        return base.strip()
+    return None
+
 def load_model_with_fallback(args: argparse.Namespace, runtime: Dict[str, object]):
-    def _load(device: str, precision: str, use_4bit: bool):
+    adapter_base = get_adapter_base_model(args.model_name)
+
+    def _load_base(device: str, precision: str, use_4bit: bool):
         quant_config = None
         kwargs = {"trust_remote_code": True}
 
@@ -467,8 +486,22 @@ def load_model_with_fallback(args: argparse.Namespace, runtime: Dict[str, object
             else:
                 kwargs["dtype"] = torch.float32
 
-        model = AutoModelForCausalLM.from_pretrained(args.model_name, **kwargs)
+        base_model_id = adapter_base or args.model_name
+        model = AutoModelForCausalLM.from_pretrained(base_model_id, **kwargs)
         return model, quant_config
+
+    def _load(device: str, precision: str, use_4bit: bool):
+        base_model, quant_config = _load_base(device, precision, use_4bit)
+        if adapter_base:
+            # Avoid transformers auto-adapter loading path that can fail with quantized repos.
+            if device == "cpu" and "bnb-4bit" in adapter_base.lower():
+                raise RuntimeError(
+                    "Adapter base model is 4-bit quantized and not suitable for CPU fallback. "
+                    "Run on CUDA GPU or choose a non-4bit base model."
+                )
+            peft_model = PeftModel.from_pretrained(base_model, args.model_name, is_trainable=True)
+            return peft_model, quant_config
+        return base_model, quant_config
 
     if runtime["device"] == "cuda":
         try:
