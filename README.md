@@ -60,6 +60,41 @@ python scripts\train_logem_binary_lora.py \
   --output_dir outputs/logem-binary-lora
 ```
 
+## GPU-First + CPU-Fallback
+Skripti käyttää nyt oletuksena:
+- `--profile auto`
+- `--device auto`
+- `--precision auto`
+
+Käytös:
+- jos CUDA löytyy: käyttää GPU-profiilia (`gpu_balanced`)
+- jos CUDA ei löydy tai GPU-init epäonnistuu: fallback CPU:lle (`cpu_balanced`)
+
+DigitalOcean GPU preflight:
+```powershell
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu')"
+```
+
+Suositusajo DO GPU:lle:
+```powershell
+python scripts\train_logem_binary_lora.py \
+  --profile auto \
+  --device auto \
+  --precision auto \
+  --model_name HassanShehata/logem \
+  --dataset_csv data/processed/training_dataset_binary.csv \
+  --output_dir outputs/logem-binary-lora
+```
+
+Raportit koulutuksen jälkeen:
+- `outputs/logem-binary-lora/training_report.json`
+- `outputs/logem-binary-lora/metrics_summary.txt`
+
+Katso ensin:
+- `final_metrics.test.f1_suspicious`
+- `final_metrics.test.recall_suspicious`
+- `train_history` (`loss` ja `eval_loss` trendi)
+
 Skripti tekee oletuksena:
 - train-splitin tasapainotuksen (`--balance_train`)
 - 4-bit latauksen GPU:lla (`--use_4bit`)
