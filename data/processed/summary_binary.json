@@ -1,0 +1,15 @@
+{
+  "total_rows": 38697,
+  "label_key": "binary_label",
+  "labels": {
+    "suspicious": 23945,
+    "normal": 14752
+  },
+  "splits": {
+    "train": 30957,
+    "val": 3870,
+    "test": 3870
+  },
+  "source": "Azure/Azure-Sentinel",
+  "path": "Solutions/Training/Azure-Sentinel-Training-Lab/Artifacts/Telemetry"
+}

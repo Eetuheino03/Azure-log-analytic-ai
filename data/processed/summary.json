@@ -1,0 +1,27 @@
+{
+  "total_rows": 38699,
+  "label_key": "target",
+  "labels": {
+    "security_event__suspicious": 23863,
+    "sap_abap__normal": 8926,
+    "audit__normal": 5000,
+    "office_activity__normal": 477,
+    "azure_activity__normal": 348,
+    "signin__suspicious": 56,
+    "network_scan__suspicious": 6,
+    "high_risk_indicator__suspicious": 5,
+    "threat_hunting__suspicious": 5,
+    "identity_admin_change__suspicious": 4,
+    "threat_evasion__suspicious": 4,
+    "mailbox_rule_change__suspicious": 2,
+    "other__unknown": 2,
+    "signin__normal": 1
+  },
+  "splits": {
+    "train": 30959,
+    "val": 3870,
+    "test": 3870
+  },
+  "source": "Azure/Azure-Sentinel",
+  "path": "Solutions/Training/Azure-Sentinel-Training-Lab/Artifacts/Telemetry"
+}

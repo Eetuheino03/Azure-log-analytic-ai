@@ -1,0 +1,18 @@
+{
+  "total_rows": 38699,
+  "label_key": "medium_label",
+  "labels": {
+    "identity_attack": 23920,
+    "benign_activity": 14751,
+    "network_activity": 16,
+    "privilege_escalation": 10,
+    "unknown": 2
+  },
+  "splits": {
+    "train": 30959,
+    "val": 3870,
+    "test": 3870
+  },
+  "source": "Azure/Azure-Sentinel",
+  "path": "Solutions/Training/Azure-Sentinel-Training-Lab/Artifacts/Telemetry"
+}
