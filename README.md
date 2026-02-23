@@ -63,6 +63,31 @@ python scripts\train_logem_binary_lora.py \
 Skripti tekee oletuksena:
 - train-splitin tasapainotuksen (`--balance_train`)
 - 4-bit latauksen GPU:lla (`--use_4bit`)
+- CPU-optimoidun profiilin `--profile cpu_fast`
+- tokenisoinnin cachen (`--cache_tokenized`)
+- run lockin (`--run_lock`) estämään vahingossa rinnakkaiset ajot samaan output-kansioon
+
+### CPU-optimoidut profiilit
+- `cpu_fast` (oletus): nopein baseline CPU:lla
+- `cpu_balanced`: kompromissi nopeuden ja laadun välillä
+- `cpu_quality`: hitaampi, tarkempi
+
+Esimerkki CPU-ajoon:
+```powershell
+python scripts\train_logem_binary_lora.py \
+  --profile cpu_fast \
+  --cpu_threads 24 \
+  --interop_threads 1 \
+  --tokenize_workers 12 \
+  --model_name HassanShehata/logem \
+  --dataset_csv data/processed/training_dataset_binary.csv \
+  --output_dir outputs/logem-binary-lora
+```
+
+Debug/smoke ajo:
+```powershell
+python scripts\train_logem_binary_lora.py --max_train_rows 1024 --eval_samples_final 100
+```
 
 Poista tasapainotus:
 ```powershell
